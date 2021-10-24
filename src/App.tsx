@@ -1,8 +1,5 @@
-import { Component, createSignal, onMount, Show } from "solid-js";
+import { Component, createSignal, Show } from "solid-js";
 
-// npm/pnpm or vite does not like importing direclty from epubjs
-
-import logo from "./logo.svg";
 import * as zip from "@zip.js/zip.js";
 
 const openEpub = async (blob: Blob) => {
