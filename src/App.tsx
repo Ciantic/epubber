@@ -71,13 +71,6 @@ const openEpub = async (blob: Blob) => {
     const mergedHtml = mergedDocument.createElement("html");
     const mergedHead = mergedDocument.createElement("head");
     const mergedBody = mergedDocument.createElement("body");
-    const cssFile = document.querySelector("link[rel='stylesheet']");
-    const style = document.querySelector("style");
-    if (cssFile) {
-        mergedHead.appendChild(cssFile.cloneNode(true));
-    } else if (style) {
-        mergedHead.appendChild(style.cloneNode(true));
-    }
     htmlBodyNodes.forEach((nodes) => {
         const div = mergedDocument.createElement("div");
         div.classList.add("html-page");
