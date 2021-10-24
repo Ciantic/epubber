@@ -150,7 +150,8 @@ const App: Component = () => {
     return (
         <div>
             <Show when={docHtml()} fallback={() => <FileSelector />}>
-                <iframe class="sandbox" sandbox="" srcdoc={docHtml()}></iframe>
+                <div innerHTML={docHtml()}></div>
+                {/* <iframe class="sandbox" sandbox="" srcdoc={docHtml()}></iframe> */}
             </Show>
         </div>
     );
