@@ -38,7 +38,9 @@ const openEpub = async (blob: Blob) => {
 
         // Replace all link targets with # and linkTarget
         d.querySelectorAll("a").forEach((e) => {
-            e.href = "#" + e.href;
+            if (e.hasAttribute("href")) {
+                e.href = "#" + e.href;
+            }
         });
 
         // Return nodes
