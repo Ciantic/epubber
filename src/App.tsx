@@ -34,7 +34,15 @@ const openEpub = async (blob: Blob) => {
 
     // Parse the HTML files as html, and return just the body nodes
     const htmlBodyNodes = htmlContents.map((f) => {
-        const d = new DOMParser().parseFromString(f, "text/html");
+        // DOMParser injects the error to a node, because hey, throwing
+        // error would be inconvinient? See https://developer.mozilla.org/en-US/docs/Web/API/DOMParser/parseFromString
+        let d = new DOMParser().parseFromString(f, "application/xhtml+xml");
+        const errnode = d.querySelector("parsererror");
+        if (errnode) {
+            // Malformed XML can be usually read with text/html parser which is
+            // rather lenient
+            d = new DOMParser().parseFromString(f, "text/html");
+        }
 
         // Replace all link targets with # and linkTarget
         d.querySelectorAll("a").forEach((e) => {
