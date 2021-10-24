@@ -16,7 +16,6 @@ const openEpub = async (blob: Blob) => {
     const dp = new DOMParser();
     const opfXml = dp.parseFromString(opfContent, "text/xml");
     const items = [...opfXml.querySelectorAll("manifest item")];
-    // console.log(opfContent);
 
     // Get corresponding ZIP file entries for the opf <item /> tags
     const htmlFiles = items
@@ -25,7 +24,19 @@ const openEpub = async (blob: Blob) => {
         // Get the filename stored in <item href="" />
         .map((f) => f.getAttribute("href") || "✅")
         // Get ZIP Entry by the filename
-        .map((f) => zipFileEntries.filter((e) => e.filename.endsWith(`/${f}`))[0])
+        .map(
+            (f) =>
+                zipFileEntries.filter((entry) => {
+                    if (entry.filename.endsWith(`/${f}`)) {
+                        // In a directory
+                        return true;
+                    } else if (entry.filename === f) {
+                        // In a root
+                        return true;
+                    }
+                    return false;
+                })[0]
+        )
         // Makes sure the file is found from zip
         .filter((f) => f);
 
@@ -57,13 +68,25 @@ const openEpub = async (blob: Blob) => {
 
     // Merge all html files to one document
     const mergedDocument = document.implementation.createDocument(null, "html");
+    const mergedHtml = mergedDocument.createElement("html");
+    const mergedHead = mergedDocument.createElement("head");
     const mergedBody = mergedDocument.createElement("body");
-    mergedDocument.documentElement.append(mergedBody);
+    const cssFile = document.querySelector("link[rel='stylesheet']");
+    const style = document.querySelector("style");
+    if (cssFile) {
+        mergedHead.appendChild(cssFile.cloneNode(true));
+    } else if (style) {
+        mergedHead.appendChild(style.cloneNode(true));
+    }
     htmlBodyNodes.forEach((nodes) => {
         const div = mergedDocument.createElement("div");
+        div.classList.add("html-page");
         div.append(...nodes);
         mergedBody.appendChild(div);
     });
+    mergedHtml.appendChild(mergedHead);
+    mergedHtml.appendChild(mergedBody);
+    mergedDocument.documentElement.append(mergedHtml);
 
     // Return the HTML of the merged document
     return mergedDocument.documentElement.outerHTML;
@@ -127,7 +150,7 @@ const App: Component = () => {
     return (
         <div>
             <Show when={docHtml()} fallback={() => <FileSelector />}>
-                <iframe sandbox="" srcdoc={docHtml()}></iframe>
+                <iframe class="sandbox" sandbox="" srcdoc={docHtml()}></iframe>
             </Show>
         </div>
     );
