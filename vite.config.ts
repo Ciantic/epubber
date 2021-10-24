@@ -1,4 +1,4 @@
-import { defineConfig, Plugin } from "vite";
+import { defineConfig, Plugin, IndexHtmlTransform } from "vite";
 import solidPlugin from "vite-plugin-solid";
 
 export default defineConfig({
@@ -6,16 +6,15 @@ export default defineConfig({
         solidPlugin(),
         {
             name: "html-csp",
-            transform(src, id) {
-                if (id.endsWith("index.html")) {
-                    return {
-                        code: src.replace(
-                            "<!-- CSP -->",
-                            `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; worker-src blob:;" />`
-                        ),
-                        map: null,
-                    };
+            transformIndexHtml(html, ctx) {
+                // On dev mode, allow also unsafe inline tags
+                if (!ctx.bundle) {
+                    return html.replace(
+                        "worker-src blob:;",
+                        "worker-src blob:; style-src 'unsafe-inline';"
+                    );
                 }
+                return html;
             },
         } as Plugin,
     ],
