@@ -15,6 +15,14 @@ function absPath(relativePath: string, currentPath: string) {
     return fullPath.pathname;
 }
 
+async function asText(z: zip.Entry) {
+    return (await z.getData?.(new zip.TextWriter())) as string;
+}
+
+async function asBlob(z: zip.Entry) {
+    return (await z?.getData?.(new zip.BlobWriter())) as string;
+}
+
 const openEpub = async (blob: Blob) => {
     const r = new zip.ZipReader(new zip.BlobReader(blob));
     const zipFileEntries = await r.getEntries();
@@ -43,23 +51,37 @@ const openEpub = async (blob: Blob) => {
         .map((f) => f.getAttribute("href") || "✅")
         // Get ZIP Entry by the filename
         .map((f) => {
-            // Usually ebook files are in oebps directory
-            const match1 = zipFileMap.get(absPath(f, "/OEBPS/"));
-            if (match1) {
-                return match1;
+            // When the files are in same directory as the OPF
+            const m = zipFileMap.get(absPath(f, opf.filename));
+            if (m) {
+                return m;
             }
 
-            // Some ebooks omit the OEPBS directory
-            const match2 = zipFileMap.get(absPath(f, "/"));
-            if (match2) {
-                return match2;
+            // Sometimes ebook files are in OEBPS directory
+            const m2 = zipFileMap.get(absPath(f, "/OEBPS/"));
+            if (m2) {
+                return m2;
+            }
+
+            // Or OPS directory
+            const m3 = zipFileMap.get(absPath(f, "/OPS/"));
+            if (m3) {
+                return m3;
+            }
+
+            // Some ebooks omit the directory entirely
+            const m4 = zipFileMap.get(absPath(f, "/"));
+            if (m4) {
+                return m4;
             }
         })
         // Makes sure the file is found from zip
         .filter((f) => f) as zip.Entry[];
 
     if (htmlFiles.length === 0) {
-        console.error("OPF Items:", items, "ZIP File entries:", zipFileEntries.keys());
+        console.error("OPF", opfContent, "OPF Items:", items, "ZIP File entries:", [
+            ...zipFileMap.keys(),
+        ]);
         throw new Error("No HTML Files found from the ebook");
     }
 
@@ -67,7 +89,7 @@ const openEpub = async (blob: Blob) => {
     const htmlContents = await Promise.all(
         htmlFiles.map(async (f) => {
             return {
-                content: (await f.getData?.(new zip.TextWriter())) as string,
+                content: await asText(f),
                 filename: f.filename,
             };
         })
@@ -102,6 +124,15 @@ const openEpub = async (blob: Blob) => {
             if (e instanceof HTMLElement) {
                 e.dataset["src"] = absPath(e.getAttribute("src") || "", filename);
                 e.removeAttribute("src");
+            }
+        });
+
+        // Lazy load SVG images
+        [...doc.getElementsByTagNameNS("http://www.w3.org/2000/svg", "image")].forEach((e) => {
+            if (e instanceof SVGImageElement) {
+                const file = e.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+                e.dataset["href"] = absPath(file || "", filename);
+                e.removeAttributeNS("http://www.w3.org/1999/xlink", "href");
             }
         });
 
@@ -154,25 +185,10 @@ const openEpub = async (blob: Blob) => {
     });
 
     return { documents, zipFileMap, titles };
-
-    // // Merge all html files to one document
-    // const mergedDocument = document.implementation.createDocument(null, "html");
-    // const mergedHtml = mergedDocument.createElement("html");
-    // const mergedHead = mergedDocument.createElement("head");
-    // const mergedBody = mergedDocument.createElement("body");
-    // htmlBodyNodes.forEach((nodes) => {
-    //     const div = mergedDocument.createElement("div");
-    //     div.classList.add("html-page");
-    //     div.append(...nodes);
-    //     mergedBody.appendChild(div);
-    // });
-    // mergedHtml.appendChild(mergedHead);
-    // mergedHtml.appendChild(mergedBody);
-    // mergedDocument.documentElement.append(mergedHtml);
-
-    // // Return the HTML of the merged document
-    // return mergedDocument.documentElement.outerHTML;
 };
+
+// TODO: Is this lazy loading thing even useful? Should I just read all
+// resources to blobs during open epub?
 
 async function loadImage(img: HTMLImageElement, fileMap: Map<string, zip.Entry>) {
     if (img.hasAttribute("src")) {
@@ -180,12 +196,32 @@ async function loadImage(img: HTMLImageElement, fileMap: Map<string, zip.Entry>)
     }
 
     const zipFile = fileMap.get(img.dataset["src"] || "");
-    if (zipFile) {
-        const blob: Blob = await zipFile.getData?.(new zip.BlobWriter());
-        if (blob instanceof Blob) {
-            img.src = URL.createObjectURL(new File([blob], zipFile.filename));
-        }
+    if (!zipFile) {
+        console.error("Cant find file", img.dataset["src"]);
+        return;
     }
+    const blob = await asBlob(zipFile);
+
+    img.src = URL.createObjectURL(new File([blob], zipFile.filename));
+}
+
+async function loadSvgImage(img: SVGImageElement, fileMap: Map<string, zip.Entry>) {
+    if (img.hasAttributeNS("http://www.w3.org/1999/xlink", "href")) {
+        return;
+    }
+
+    const zipFile = fileMap.get(img.dataset["href"] || "");
+    if (!zipFile) {
+        console.error("Cant find file", img.dataset["href"]);
+        return;
+    }
+    const blob = await asBlob(zipFile);
+
+    img.setAttributeNS(
+        "http://www.w3.org/1999/xlink",
+        "xlink:href",
+        URL.createObjectURL(new File([blob], zipFile.filename))
+    );
 }
 
 const App: Component = () => {
@@ -196,28 +232,42 @@ const App: Component = () => {
     const [fileMap, setFileMap] = createSignal(new Map() as Map<string, zip.Entry>);
     const observer = new IntersectionObserver((entries) => {
         for (const entry of entries) {
-            if (entry.target instanceof HTMLImageElement) {
-                const img = entry.target;
-
-                // Lazy load the image as blob
-                if (entry.isIntersecting) {
-                    loadImage(img, fileMap());
-                }
+            const target = entry.target;
+            if (!entry.isIntersecting) {
+                continue;
+            }
+            if (target instanceof HTMLImageElement) {
+                loadImage(target, fileMap());
+            }
+            if (target instanceof SVGElement) {
+                [...target.getElementsByTagName("image")].forEach((img) => {
+                    loadSvgImage(img, fileMap());
+                });
             }
         }
     });
 
-    window.addEventListener("beforeprint", () => {
+    function loadAllResources() {
         document.querySelectorAll("img").forEach((img) => {
             loadImage(img, fileMap());
         });
-    });
 
+        [...document.getElementsByTagName("image")].forEach((img) => {
+            loadSvgImage(img, fileMap());
+        });
+    }
+
+    // When pages are created
     function onMountPagesEl(el: HTMLDivElement) {
+        window.addEventListener("beforeprint", () => {
+            loadAllResources();
+        });
+
         setTimeout(() => {
             el.querySelectorAll("img").forEach((img) => {
                 observer.observe(img);
             });
+            el.querySelectorAll("svg").forEach((svg) => observer.observe(svg));
         });
     }
 
