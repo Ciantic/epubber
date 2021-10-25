@@ -100,7 +100,17 @@ const openEpub = async (blob: Blob) => {
             }
         });
 
-        // Return nodes
+        // Remove style tags (they are against the CSP)
+        doc.querySelectorAll("style").forEach((e) => {
+            e.remove();
+        });
+
+        // Remove inline styles (they are against the CSP)
+        doc.querySelectorAll("[style]").forEach((e) => {
+            e.removeAttribute("style");
+        });
+
+        // Return doc
         return doc;
     });
 
@@ -127,7 +137,6 @@ const openEpub = async (blob: Blob) => {
 
 const App: Component = () => {
     let inputFileEl: HTMLInputElement | undefined;
-    let pagesEl: HTMLDivElement | undefined;
     const [err, setErr] = createSignal("");
     const [documents, setDocuments] = createSignal([] as Document[]);
     const [fileMap, setFileMap] = createSignal(new Map() as Map<string, zip.Entry>);
@@ -135,6 +144,8 @@ const App: Component = () => {
         for (const entry of entries) {
             if (entry.target instanceof HTMLImageElement) {
                 const img = entry.target;
+
+                // Lazy load the image as blob
                 if (entry.isIntersecting && !img.hasAttribute("src")) {
                     const zipFile = fileMap().get(img.dataset["src"] || "");
                     if (zipFile) {
