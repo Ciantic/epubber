@@ -110,6 +110,34 @@ const openEpub = async (blob: Blob) => {
             e.removeAttribute("style");
         });
 
+        // Where we go, we don't need classes either
+        doc.querySelectorAll("[class]").forEach((e) => {
+            e.removeAttribute("class");
+        });
+
+        // If it's not accessible, it's most likely some decoration we don't want
+        doc.querySelectorAll("[aria-hidden]").forEach((e) => {
+            if (e.ariaHidden) {
+                e.remove();
+            }
+        });
+
+        // Some epubs are full of useless divs, we just flatten those
+        // TODO: This seems to work, but it might not be exactly what I want
+        doc.querySelectorAll("div").forEach((e) => {
+            if (!e.id) {
+                e.replaceWith(...e.childNodes);
+            }
+        });
+
+        // Remove all empty elements
+        // TODO: This breaks the empty table cells
+        // doc.querySelectorAll("*:not(hr)").forEach((e) => {
+        //     if (!e.hasChildNodes() && !e.id) {
+        //         e.remove();
+        //     }
+        // });
+
         // Return doc
         return doc;
     });
@@ -228,7 +256,7 @@ const App: Component = () => {
             <Show when={documents().length > 0} fallback={() => <FileSelector />}>
                 <div ref={onMountPagesEl}>
                     {documents().map((d) => (
-                        <section class="page" innerHTML={d.body.outerHTML}></section>
+                        <div class="html-page" innerHTML={d.body.outerHTML}></div>
                     ))}
                 </div>
             </Show>

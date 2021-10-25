@@ -8,31 +8,33 @@ body {
         "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
 }
 
 code {
     font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
-iframe.sandbox {
-    width: 100% !important;
-    height: 100% !important;
-    left: 0px !important;
-    position: fixed !important;
-    top: 0px !important;
-    z-index: 9999;
-    border: 0;
+p {
+    margin: 0;
+    padding: 0 0 1em 0;
 }
 
 table {
     text-align: left;
     border-collapse: collapse;
-    width: 100%;
-    margin: 1em 0 0 0;
+    // width: 100%;
+    margin: 0 0 1em 0;
+    padding: 0;
+
+    border: thin solid;
     th,
     td {
-        padding: 0.6em 1.2em;
-        border: 1px solid;
+        padding: 0.7em 0.9em;
+        border: thin solid;
+        p:only-child {
+            padding: 0;
+        }
     }
 }
 
@@ -40,5 +42,56 @@ img {
     width: 100%;
     height: auto;
     display: block;
-    border: 1px solid;
+    margin: 0 0 1em 0;
+    padding: 0;
+    // border: thin solid;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    margin: 0;
+    padding: 1.5em 0 0.5em 0;
+    a {
+        text-decoration: none;
+        color: inherit;
+    }
+}
+
+h1 {
+    font-size: 300%;
+    + h2,
+    + h1 {
+        padding-top: 0;
+    }
+}
+
+h2 {
+    font-size: 200%;
+}
+
+h3 {
+    font-size: 150%;
+}
+
+h4 {
+    font-size: 125;
+}
+h5 {
+    font-size: 100%;
+}
+
+hr {
+    border: 0;
+    border-bottom: thin solid;
+    padding: 0;
+    margin: 0 0 1em 0;
+}
+
+article.html-page + article.html-page {
+    padding-top: 4em;
+    page-break-before: always;
 }
