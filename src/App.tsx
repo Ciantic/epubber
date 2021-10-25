@@ -158,6 +158,11 @@ const openEpub = async (blob: Blob) => {
         doc.querySelectorAll("section,article,div").forEach((e) => {
             if (!e.id) {
                 e.replaceWith(...e.childNodes);
+            } else {
+                const div = doc.createElement("div");
+                div.id = e.id;
+                div.append(...e.childNodes);
+                e.replaceWith(div);
             }
         });
 
