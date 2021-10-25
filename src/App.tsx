@@ -22,7 +22,7 @@ const openEpub = async (blob: Blob) => {
         zipFileEntries.map((zipEntry) => ["/" + zipEntry.filename, zipEntry])
     );
 
-    // Read the epub opf <item /> tags
+    // Read the epub opf <item /> tags ( https://www.w3.org/publishing/epub3/epub-packages.html )
     const opfFiles = zipFileEntries.filter((f) => f.filename.endsWith(".opf"));
     if (opfFiles.length !== 1) {
         throw new Error("OPF confusion");
@@ -32,6 +32,8 @@ const openEpub = async (blob: Blob) => {
     const dp = new DOMParser();
     const opfXml = dp.parseFromString(opfContent, "text/xml");
     const items = [...opfXml.querySelectorAll("manifest item")];
+    const titles = [...opfXml.querySelectorAll("title")].map((f) => f.textContent || "");
+    // const identifiers = [...opfXml.querySelectorAll("identifier")].map((f) => f.textContent || "");
 
     // Get corresponding ZIP file entries for the opf <item /> tags
     const htmlFiles = items
@@ -73,8 +75,9 @@ const openEpub = async (blob: Blob) => {
 
     // Parse the HTML files as html
     const documents = htmlContents.map(({ content, filename }) => {
-        // DOMParser injects the error to a node, because hey, throwing
-        // error would be inconvinient? See https://developer.mozilla.org/en-US/docs/Web/API/DOMParser/parseFromString
+        // DOMParser injects the error to a node, because hey, throwing error
+        // would be inconvinient? See
+        // https://developer.mozilla.org/en-US/docs/Web/API/DOMParser/parseFromString
         let doc = new DOMParser().parseFromString(content, "application/xhtml+xml");
         const errnode = doc.querySelector("parsererror");
         const resources = {} as { [k: string]: () => Promise<Blob> };
@@ -83,6 +86,8 @@ const openEpub = async (blob: Blob) => {
             // rather lenient
             doc = new DOMParser().parseFromString(content, "text/html");
         }
+
+        // TODO: Maybe loop over all elements instead of selecting them?
 
         // Replace all link targets with # and move href to data
         doc.querySelectorAll("[href]").forEach((e) => {
@@ -100,8 +105,8 @@ const openEpub = async (blob: Blob) => {
             }
         });
 
-        // Remove style tags (they are against the CSP)
-        doc.querySelectorAll("style").forEach((e) => {
+        // Remove style, hr, other decorative tags
+        doc.querySelectorAll("style, hr, [aria-hidden]").forEach((e) => {
             e.remove();
         });
 
@@ -115,18 +120,24 @@ const openEpub = async (blob: Blob) => {
             e.removeAttribute("class");
         });
 
-        // If it's not accessible, it's most likely some decoration we don't want
-        doc.querySelectorAll("[aria-hidden]").forEach((e) => {
-            if (e.ariaHidden) {
-                e.remove();
+        // Some epubs are full of useless divs, sections, articles, we just
+        // flatten those
+        //
+        // TODO: This seems to work, but it might not be exactly what I want
+        doc.querySelectorAll("section,article,div").forEach((e) => {
+            if (!e.id) {
+                e.replaceWith(...e.childNodes);
             }
         });
 
-        // Some epubs are full of useless divs, we just flatten those
-        // TODO: This seems to work, but it might not be exactly what I want
-        doc.querySelectorAll("div").forEach((e) => {
-            if (!e.id) {
-                e.replaceWith(...e.childNodes);
+        // This is some master plan by epub authors, plenty of H1's followed
+        // immediately by another H1.
+        doc.querySelectorAll("h1 + h1").forEach((e) => {
+            const h1 = e.previousElementSibling;
+            if (h1 instanceof HTMLHeadingElement) {
+                h1.append(doc.createElement("br"), doc.createTextNode(" "));
+                h1.append(...e.childNodes);
+                e.remove();
             }
         });
 
@@ -142,7 +153,7 @@ const openEpub = async (blob: Blob) => {
         return doc;
     });
 
-    return { documents, zipFileMap };
+    return { documents, zipFileMap, titles };
 
     // // Merge all html files to one document
     // const mergedDocument = document.implementation.createDocument(null, "html");
@@ -163,9 +174,24 @@ const openEpub = async (blob: Blob) => {
     // return mergedDocument.documentElement.outerHTML;
 };
 
+async function loadImage(img: HTMLImageElement, fileMap: Map<string, zip.Entry>) {
+    if (img.hasAttribute("src")) {
+        return;
+    }
+
+    const zipFile = fileMap.get(img.dataset["src"] || "");
+    if (zipFile) {
+        const blob: Blob = await zipFile.getData?.(new zip.BlobWriter());
+        if (blob instanceof Blob) {
+            img.src = URL.createObjectURL(new File([blob], zipFile.filename));
+        }
+    }
+}
+
 const App: Component = () => {
     let inputFileEl: HTMLInputElement | undefined;
     const [err, setErr] = createSignal("");
+    const [titles, setTitles] = createSignal([] as string[]);
     const [documents, setDocuments] = createSignal([] as Document[]);
     const [fileMap, setFileMap] = createSignal(new Map() as Map<string, zip.Entry>);
     const observer = new IntersectionObserver((entries) => {
@@ -174,19 +200,17 @@ const App: Component = () => {
                 const img = entry.target;
 
                 // Lazy load the image as blob
-                if (entry.isIntersecting && !img.hasAttribute("src")) {
-                    const zipFile = fileMap().get(img.dataset["src"] || "");
-                    if (zipFile) {
-                        (async () => {
-                            const blob: Blob = await zipFile.getData?.(new zip.BlobWriter());
-                            if (blob instanceof Blob) {
-                                img.src = URL.createObjectURL(new File([blob], zipFile.filename));
-                            }
-                        })();
-                    }
+                if (entry.isIntersecting) {
+                    loadImage(img, fileMap());
                 }
             }
         }
+    });
+
+    window.addEventListener("beforeprint", () => {
+        document.querySelectorAll("img").forEach((img) => {
+            loadImage(img, fileMap());
+        });
     });
 
     function onMountPagesEl(el: HTMLDivElement) {
@@ -204,18 +228,20 @@ const App: Component = () => {
 
         const file = inputFileEl.files?.[0];
         if (file) {
-            const { documents, zipFileMap } = await openEpub(file);
+            const { documents, zipFileMap, titles } = await openEpub(file);
             setDocuments(documents);
             setFileMap(zipFileMap);
+            setTitles(titles);
         }
     }
 
     async function selectUrl(url: string) {
         try {
             const f = await fetch(url);
-            const { documents, zipFileMap } = await openEpub(await f.blob());
+            const { documents, zipFileMap, titles } = await openEpub(await f.blob());
             setDocuments(documents);
             setFileMap(zipFileMap);
+            setTitles(titles);
         } catch (err) {
             if (err instanceof TypeError) {
                 setErr(err.name + ": " + err.message);
@@ -249,14 +275,17 @@ const App: Component = () => {
         );
     }
 
-    function PagesEl() {}
-
     return (
         <div>
             <Show when={documents().length > 0} fallback={() => <FileSelector />}>
                 <div ref={onMountPagesEl}>
+                    <h1 class="book-title">
+                        {titles().map((f, i) => (
+                            <div class={`line${i}`}>{f}</div>
+                        ))}
+                    </h1>
                     {documents().map((d) => (
-                        <div class="html-page" innerHTML={d.body.outerHTML}></div>
+                        <section class="html-page" innerHTML={d.body.outerHTML}></section>
                     ))}
                 </div>
             </Show>
