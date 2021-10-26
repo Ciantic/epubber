@@ -10,14 +10,18 @@ export default defineConfig({
                 // On dev mode, allow also unsafe inline tags
                 if (!ctx.bundle) {
                     return html.replace(
-                        "worker-src blob:;",
-                        "worker-src blob:; style-src 'unsafe-inline';"
+                        "default-src ",
+                        "style-src 'unsafe-inline'; default-src wss: ws: "
                     );
                 }
                 return html;
             },
         } as Plugin,
     ],
+    server: {
+        host: "0.0.0.0",
+        https: true,
+    },
     base: "./",
     build: {
         target: "esnext",

@@ -41,6 +41,7 @@ const openEpub = async (blob: Blob) => {
     const opfXml = dp.parseFromString(opfContent, "text/xml");
     const items = [...opfXml.querySelectorAll("manifest item")];
     const titles = [...opfXml.querySelectorAll("title")].map((f) => f.textContent || "");
+    console.log("opf", opfContent);
     // const identifiers = [...opfXml.querySelectorAll("identifier")].map((f) => f.textContent || "");
 
     // Get corresponding ZIP file entries for the opf <item /> tags
@@ -206,6 +207,11 @@ async function loadImage(img: HTMLImageElement, fileMap: Map<string, zip.Entry>)
         return;
     }
     const blob = await asBlob(zipFile);
+    img.onload = () => {
+        if (img.naturalWidth < 300 && img.naturalHeight < 300) {
+            img.classList.add("small");
+        }
+    };
 
     img.src = URL.createObjectURL(new File([blob], zipFile.filename));
 }
@@ -292,8 +298,13 @@ const App: Component = () => {
 
     async function selectUrl(url: string) {
         try {
-            const f = await fetch(url);
-            const { documents, zipFileMap, titles } = await openEpub(await f.blob());
+            const f = await fetch(url, {
+                mode: "no-cors",
+                redirect: "follow",
+            });
+            const blob = await f.blob();
+            console.log("f", f, blob);
+            const { documents, zipFileMap, titles } = await openEpub(blob);
             setDocuments(documents);
             setFileMap(zipFileMap);
             setTitles(titles);
@@ -313,7 +324,12 @@ const App: Component = () => {
                 <h2>Select epub file</h2>
                 <input type="file" ref={inputFileEl} name="" onInput={selectFile} />
                 <h2>Or type fetchable URL</h2>
-                <input type="text" placeholder="URL" />{" "}
+                <input
+                    value="https://github.com/IDPF/epub3-samples/releases/download/20170606/moby-dick.epub"
+                    type="text"
+                    size="80"
+                    placeholder="URL"
+                />{" "}
                 <button
                     type="button"
                     onClick={(e) => {

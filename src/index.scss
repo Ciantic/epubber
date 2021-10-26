@@ -49,6 +49,10 @@ img {
     margin: 0 0 1em 0;
     padding: 0;
     // border: thin solid;
+    &.small {
+        width: auto;
+        margin: 0 auto;
+    }
 }
 
 h1,
