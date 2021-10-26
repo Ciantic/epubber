@@ -324,12 +324,8 @@ const App: Component = () => {
                 <h2>Select epub file</h2>
                 <input type="file" ref={inputFileEl} name="" onInput={selectFile} />
                 <h2>Or type fetchable URL</h2>
-                <input
-                    value="https://github.com/IDPF/epub3-samples/releases/download/20170606/moby-dick.epub"
-                    type="text"
-                    size="80"
-                    placeholder="URL"
-                />{" "}
+                <p>This does not work at the moment, because of CSP</p>
+                <input value="" type="text" size="80" placeholder="URL" />{" "}
                 <button
                     type="button"
                     onClick={(e) => {
